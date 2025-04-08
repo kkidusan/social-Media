@@ -1,73 +1,94 @@
-// pages/api/login.ts
 import { NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import { auth, signInWithEmailAndPassword, db } from "../../firebase";
 import { collection, query, where, getDocs } from "firebase/firestore";
 
 export async function POST(request: Request) {
-  const { email, password } = await request.json();
-
-  // Basic validation
-  if (!email || !password) {
-    return NextResponse.json({ error: "Email and password are required" }, { status: 400 });
-  }
-
   try {
+    const { email, password, rememberMe = false } = await request.json();
+
+    // Validate input
+    if (!email || !password) {
+      return NextResponse.json(
+        { error: "Email and password are required" }, 
+        { status: 400 }
+      );
+    }
+
     // Authenticate with Firebase
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
 
     // Check user role in Firestore
-    const ownerRef = collection(db, "owner");
-    const ownerQuery = query(ownerRef, where("email", "==", user.email));
-    const ownerSnapshot = await getDocs(ownerQuery);
-
-    const adminRef = collection(db, "admin");
-    const adminQuery = query(adminRef, where("email", "==", user.email));
-    const adminSnapshot = await getDocs(adminQuery);
+    const [userSnapshot, adminSnapshot] = await Promise.all([
+      getDocs(query(collection(db, "useraccount"), where("email", "==", user.email))),
+      getDocs(query(collection(db, "admin"), where("email", "==", user.email)))
+    ]);
 
     let role = null;
-    if (!ownerSnapshot.empty) {
-      role = "owner";
+    if (!userSnapshot.empty) {
+      role = "user";
     } else if (!adminSnapshot.empty) {
       role = "admin";
     } else {
-      return NextResponse.json({ error: "User not authorized" }, { status: 403 });
+      return NextResponse.json(
+        { error: "User not authorized" }, 
+        { status: 403 }
+      );
     }
 
-    // Generate JWT
+    // Generate JWT token
+    const tokenExpiration = rememberMe ? "30d" : "1h";
     const token = jwt.sign(
-      { userId: user.uid, email: user.email, role },
-      process.env.JWT_SECRET as string,
-      { expiresIn: "1h" }
+      { 
+        userId: user.uid, 
+        email: user.email, 
+        role,
+        rememberMe 
+      },
+      process.env.JWT_SECRET!,
+      { expiresIn: tokenExpiration }
     );
 
-    // Set JWT in cookie
+    // Create response
     const response = NextResponse.json({
-      message: "Login successful",
-      role,
-      email: user.email,
+      success: true,
+      user: {
+        email: user.email,
+        role,
+      }
     });
-    response.cookies.set("token", token, {
+
+    // Set cookie
+    response.cookies.set({
+      name: "token",
+      value: token,
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      maxAge: 3600, // 1 hour
+      maxAge: rememberMe ? 30 * 24 * 60 * 60 : 60 * 60, // 30 days or 1 hour
       path: "/",
       sameSite: "strict",
     });
 
     return response;
-  } catch (error: any) {
-    console.error("Login Error:", error);
 
-    const errorMap: { [key: string]: string } = {
-      "auth/user-not-found": "No user found with this email",
-      "auth/wrong-password": "Incorrect password",
+  } catch (error: any) {
+    console.error("Login error:", error);
+
+    const errorMap: Record<string, string> = {
       "auth/invalid-email": "Invalid email address",
-      "auth/too-many-requests": "Too many attempts, try again later",
+      "auth/user-disabled": "Account disabled",
+      "auth/user-not-found": "No account found with this email",
+      "auth/wrong-password": "Incorrect password",
+      "auth/too-many-requests": "Too many attempts, please try again later",
     };
 
-    const errorMessage = errorMap[error.code] || "Login failed";
-    return NextResponse.json({ error: errorMessage }, { status: 401 });
+    const status = error.code in errorMap ? 401 : 500;
+    const message = errorMap[error.code] || "Login failed. Please try again.";
+
+    return NextResponse.json(
+      { error: message },
+      { status }
+    );
   }
 }

@@ -11,10 +11,11 @@
   "dependencies": {
     "@cloudinary/react": "^1.14.1",
     "@cloudinary/url-gen": "^1.21.0",
+    "@heroicons/react": "^2.2.0",
     "axios": "^1.8.4",
     "cloudinary": "^2.6.0",
     "ethiopian-date": "^0.0.6",
-    "firebase": "^11.5.0",
+    "firebase": "^11.6.0",
     "firebase-admin": "^13.2.0",
     "framer-motion": "^12.6.2",
     "lucide-react": "^0.485.0",
