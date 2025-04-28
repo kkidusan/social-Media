@@ -28,7 +28,7 @@ export default function UserList() {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const videoRefs = useRef<{ [key: string]: HTMLVideoElement | null }>({}); // Refs for video elements
+  const videoRefs = useRef<{ [key: string]: HTMLVideoElement | null }>({});
   const router = useRouter();
 
   useEffect(() => {
@@ -37,7 +37,6 @@ export default function UserList() {
         setIsLoading(true);
         setError(null);
 
-        // Fetch all users from useraccount collection
         const userCollectionRef = collection(db, "useraccount");
         const userQuerySnapshot = await getDocs(userCollectionRef);
 
@@ -69,7 +68,6 @@ export default function UserList() {
             thumbnailUrl: "",
           };
 
-          // Fetch one video for this user from videos collection
           const videosQuery = query(
             collection(db, "videos"),
             where("customUserId", "==", user.customUserId)
@@ -98,12 +96,11 @@ export default function UserList() {
   }, []);
 
   useEffect(() => {
-    // Set initial video frame as background
     users.forEach((user) => {
       const video = videoRefs.current[user.id];
       if (video && user.videoUrl) {
-        video.currentTime = 1; // Set to 1 second as default frame
-        video.pause(); // Ensure it’s paused initially
+        video.currentTime = 1;
+        video.pause();
       }
     });
   }, [users]);
@@ -119,7 +116,7 @@ export default function UserList() {
     const video = videoRefs.current[userId];
     if (video) {
       video.pause();
-      video.currentTime = 1; // Reset to 1 second for a consistent "thumbnail" effect
+      video.currentTime = 1;
     }
   };
 
@@ -148,7 +145,7 @@ export default function UserList() {
             key={user.id}
             href={`/account/${user.customUserId}`}
             passHref
-            legacyBehavior // For compatibility with older Next.js versions if needed
+            legacyBehavior
           >
             <a
               className="relative rounded-xl shadow-lg overflow-hidden aspect-[9/16] flex flex-col justify-end transition-all duration-200 hover:shadow-2xl"
@@ -156,14 +153,15 @@ export default function UserList() {
               onMouseLeave={() => handleMouseLeave(user.id)}
               style={{
                 background: user.videoUrl
-                  ? "black" // Black background while video loads
-                  : "linear-gradient(to bottom, #1f2937, #111827)", // Default gradient if no video
+                  ? "black"
+                  : "linear-gradient(to bottom, #1f2937, #111827)",
               }}
             >
-              {/* Video Background */}
               {user.videoUrl && (
                 <video
-                  ref={(el) => (videoRefs.current[user.id] = el)}
+                  ref={(el: HTMLVideoElement | null) => {
+                    videoRefs.current[user.id] = el;
+                  }}
                   className="absolute inset-0 w-full h-full object-cover opacity-80"
                   loop
                   muted
@@ -173,7 +171,6 @@ export default function UserList() {
                 </video>
               )}
 
-              {/* Overlay Content */}
               <div className="relative z-10 p-3 bg-gradient-to-t from-black/70 to-transparent">
                 <div className="flex items-center">
                   <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-white mr-2">
@@ -184,7 +181,6 @@ export default function UserList() {
                     />
                   </div>
                   <div>
-                   
                     <p className="text-xs text-gray-300">
                       {user.firstName} {user.lastName}
                     </p>

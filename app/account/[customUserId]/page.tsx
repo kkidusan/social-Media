@@ -202,7 +202,7 @@ export default function Profile() {
   useEffect(() => {
     if (videos.length > 0 && !isLoading) {
       const cleanupTimeouts: Array<() => void> = [];
-      
+
       videos.forEach(video => {
         const videoElement = videoRefs.current[video.videoId];
         if (videoElement) {
@@ -454,7 +454,9 @@ export default function Profile() {
                 onClick={() => openVideoModal(video)}
               >
                 <video
-                  ref={el => (videoRefs.current[video.videoId] = el)}
+                  ref={el => {
+                    videoRefs.current[video.videoId] = el;
+                  }}
                   className="w-full h-full object-cover"
                   muted
                   playsInline
@@ -516,7 +518,9 @@ export default function Profile() {
 
           <div className="flex-1 relative">
             <video
-              ref={el => (videoRefs.current[selectedVideo.videoId] = el)}
+              ref={el => {
+                videoRefs.current[selectedVideo.videoId] = el;
+              }}
               className="w-full h-full object-contain"
               autoPlay
               loop

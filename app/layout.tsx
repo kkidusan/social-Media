@@ -11,19 +11,14 @@ export const metadata: Metadata = {
   description: "A Next.js social media app with Firebase",
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body className={`${inter.className} bg-gray-100`}>
         <AuthProvider>
           <div className="flex min-h-screen">
             <Sidebar />
-            {/* Main content area - adjusts based on sidebar state */}
-            <main 
+            <main
               id="main-content"
               className="flex-1 transition-all duration-300 ease-in-out min-h-screen"
             >

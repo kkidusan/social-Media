@@ -6,6 +6,28 @@ import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../contexts/AuthContext";
 
+// Define interfaces for TypeScript
+interface User {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+}
+
+interface VideoData {
+  title: string;
+  description: string;
+  videoUrl: string;
+  publicId: string;
+  userId: string;
+  userEmail: string | null;
+  userName: string;
+  createdAt: any;
+  views: number;
+  likes: number;
+  likesByUsers: string[];
+  comments: string[];
+}
+
 export default function VideoUpload() {
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
@@ -15,7 +37,7 @@ export default function VideoUpload() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { user } = useAuth();
+  const { user } = useAuth() as { user: User | null };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -33,38 +55,60 @@ export default function VideoUpload() {
     }
   };
 
-  const uploadToCloudinary = async (file: File) => {
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("upload_preset", process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET!);
-    formData.append("folder", "shortMovie");
-    formData.append("resource_type", "video");
+  const uploadToCloudinary = (file: File): Promise<{ secure_url: string; public_id: string }> => {
+    return new Promise((resolve, reject) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("upload_preset", process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET ?? "");
+      formData.append("folder", "shortMovie");
+      formData.append("resource_type", "video");
 
-    const response = await fetch(
-      `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/video/upload`,
-      {
-        method: "POST",
-        body: formData,
-        onUploadProgress: (progressEvent) => {
-          if (progressEvent.total) {
-            const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-            setProgress(percentCompleted);
-          }
-        },
-      }
-    );
+      const xhr = new XMLHttpRequest();
+      xhr.open(
+        "POST",
+        `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/video/upload`
+      );
 
-    if (!response.ok) {
-      throw new Error("Failed to upload to Cloudinary");
-    }
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const percentCompleted = Math.round((event.loaded * 100) / event.total);
+          setProgress(percentCompleted);
+        }
+      };
 
-    return await response.json();
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          const response = JSON.parse(xhr.responseText);
+          resolve({
+            secure_url: response.secure_url,
+            public_id: response.public_id,
+          });
+        } else {
+          reject(new Error("Failed to upload to Cloudinary"));
+        }
+      };
+
+      xhr.onerror = () => reject(new Error("Network error during upload"));
+      xhr.send(formData);
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file || !user) {
       setError("Please select a file and log in.");
+      return;
+    }
+    if (!title.trim()) {
+      setError("Title is required.");
+      return;
+    }
+    if (title.length > 100) {
+      setError("Title must be less than 100 characters.");
+      return;
+    }
+    if (description.length > 500) {
+      setError("Description must be less than 500 characters.");
       return;
     }
 
@@ -75,12 +119,10 @@ export default function VideoUpload() {
 
     try {
       // Upload to Cloudinary
-      const cloudinaryResponse = await uploadToCloudinary(file);
-      const videoUrl = cloudinaryResponse.secure_url;
-      const publicId = cloudinaryResponse.public_id;
+      const { secure_url: videoUrl, public_id: publicId } = await uploadToCloudinary(file);
 
       // Create video data for Firestore
-      const videoData = {
+      const videoData: VideoData = {
         title,
         description,
         videoUrl,
@@ -145,6 +187,7 @@ export default function VideoUpload() {
             onChange={(e) => setTitle(e.target.value)}
             className="w-full p-2 border rounded"
             disabled={!user || isUploading}
+            maxLength={100}
             required
           />
         </div>
@@ -160,6 +203,7 @@ export default function VideoUpload() {
             className="w-full p-2 border rounded"
             rows={3}
             disabled={!user || isUploading}
+            maxLength={500}
           />
         </div>
 
