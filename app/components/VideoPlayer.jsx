@@ -1,23 +1,23 @@
-// components/VideoUpload.tsx
 "use client";
 
 import { useState, useRef } from "react";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../contexts/AuthContext";
+import { User } from "firebase/auth";
 
 export default function VideoUpload() {
-  const [file, setFile] = useState<File | null>(null);
+  const [file, setFile] = useState(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [progress, setProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef(null);
   const { user } = useAuth();
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e) => {
     if (e.target.files && e.target.files[0]) {
       const selectedFile = e.target.files[0];
       if (!selectedFile.type.includes("video")) {
@@ -33,10 +33,10 @@ export default function VideoUpload() {
     }
   };
 
-  const uploadToCloudinary = async (file: File) => {
+  const uploadToCloudinary = async (file) => {
     const formData = new FormData();
     formData.append("file", file);
-    formData.append("upload_preset", process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET!);
+    formData.append("upload_preset", process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET);
     formData.append("folder", "videos");
     formData.append("resource_type", "video");
 
@@ -57,15 +57,14 @@ export default function VideoUpload() {
     return data;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Stricter user validation
     if (!file) {
       setError("Please select a video file.");
       return;
     }
-    if (!user || !user.uid) {
+    if (!user) {
       setError("You must be logged in to upload a video.");
       return;
     }
@@ -78,14 +77,14 @@ export default function VideoUpload() {
     try {
       const cloudinaryResponse = await uploadToCloudinary(file);
       const videoUrl = cloudinaryResponse.secure_url;
-      const publicId = cloudinaryResponse.public_id.split("/").pop(); // Extract unique ID
+      const publicId = cloudinaryResponse.public_id.split("/").pop();
 
       const videoData = {
         title,
         description,
         videoUrl,
-        publicId: cloudinaryResponse.public_id, // Full publicId for Cloudinary
-        userId: user.uid, // Should now be valid
+        publicId: cloudinaryResponse.public_id,
+        userId: user.uid,
         createdAt: serverTimestamp(),
         views: 0,
         likes: 0,
