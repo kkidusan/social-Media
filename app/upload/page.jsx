@@ -144,7 +144,7 @@ export default function VideoUploadForm() {
       });
 
       alert(`Video uploaded successfully! Video ID: ${formData.videoId}`);
-      router.push("/up");
+      router.push("/");
     } catch (error) {
       console.error("Error adding document: ", error);
       alert("Failed to save video data. Please try again.");
