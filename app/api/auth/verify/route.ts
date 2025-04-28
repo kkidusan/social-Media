@@ -3,7 +3,7 @@ import jwt from "jsonwebtoken";
 import { NextResponse } from "next/server";
 
 export async function GET() {
-  const cookieStore = cookies();
+  const cookieStore = await cookies(); // Await the cookies() promise
   const token = cookieStore.get("token")?.value;
 
   if (!token) {
