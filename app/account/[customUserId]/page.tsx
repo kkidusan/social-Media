@@ -43,8 +43,8 @@ interface Follower {
 }
 
 export default function Profile() {
-  const params = useParams();
-  const customUserId = params?.customUserId as string;
+  const params = useParams<{ customUserId: string }>();
+  const customUserId = params.customUserId;
   const videoRefs = useRef<{ [key: string]: HTMLVideoElement | null }>({});
   const [activeVideo, setActiveVideo] = useState<string | null>(null);
   const [showVideoModal, setShowVideoModal] = useState(false);
@@ -65,13 +65,23 @@ export default function Profile() {
         const userCollectionRef = collection(db, "useraccount");
         const userQuery = query(userCollectionRef, where("customUserId", "==", customUserId));
         const userQuerySnapshot = await getDocs(userQuery);
-        
+
         if (userQuerySnapshot.empty) {
           throw new Error(`User with ID ${customUserId} not found`);
         }
 
         const userDoc = userQuerySnapshot.docs[0];
-        const userData = userDoc.data();
+        const userData = userDoc.data() as {
+          email: string;
+          firstName: string;
+          lastName: string;
+          isActive?: boolean;
+          username?: string;
+          profilePicture?: string;
+          bio?: string;
+          totalLikes?: number;
+          isFollowing?: boolean;
+        };
 
         // Fetch followers count (users following this user)
         const followersQuery = query(
@@ -94,53 +104,58 @@ export default function Profile() {
           email: userData.email,
           firstName: userData.firstName,
           lastName: userData.lastName,
-          isActive: userData.isActive !== undefined ? userData.isActive : true,
-          username: userData.username || customUserId,
-          profilePicture: userData.profilePicture || `https://i.pravatar.cc/150?u=${customUserId}`,
-          bio: userData.bio || "",
+          isActive: userData.isActive ?? true,
+          username: userData.username ?? customUserId,
+          profilePicture: userData.profilePicture ?? `https://i.pravatar.cc/150?u=${customUserId}`,
+          bio: userData.bio ?? "",
           followers: followersCount,
           following: followingCount,
-          totalLikes: userData.totalLikes || 0,
-          isFollowing: userData.isFollowing || false,
+          totalLikes: userData.totalLikes ?? 0,
+          isFollowing: userData.isFollowing ?? false,
         };
 
         // Fetch videos
         const videosCollectionRef = collection(db, "videos");
         const videosQuery = query(videosCollectionRef, where("customUserId", "==", customUserId));
         const videosQuerySnapshot = await getDocs(videosQuery);
-        
-        const fetchedVideos: VideoPost[] = videosQuerySnapshot.docs.map(doc => ({
-          id: doc.id,
-          videoId: doc.data().videoId,
-          videoUrl: doc.data().videoUrl,
-          thumbnailUrl: doc.data().thumbnailUrl || "",
-          likes: doc.data().likes || 0,
-          views: doc.data().views || 0,
-          caption: doc.data().caption || "",
-          customUserId: doc.data().customUserId,
-          isLiked: false,
-          highlightStart: doc.data().highlightStart || 2,
-          highlightDuration: doc.data().highlightDuration || 5,
-        }));
+
+        const fetchedVideos: VideoPost[] = videosQuerySnapshot.docs.map(doc => {
+          const videoData = doc.data();
+          return {
+            id: doc.id,
+            videoId: videoData.videoId as string,
+            videoUrl: videoData.videoUrl as string,
+            thumbnailUrl: videoData.thumbnailUrl ?? "",
+            likes: videoData.likes ?? 0,
+            views: videoData.views ?? 0,
+            caption: videoData.caption ?? "",
+            customUserId: videoData.customUserId as string,
+            isLiked: false,
+            highlightStart: videoData.highlightStart ?? 2,
+            highlightDuration: videoData.highlightDuration ?? 5,
+          };
+        });
 
         const calculatedTotalLikes = fetchedVideos.reduce((sum, video) => sum + video.likes, 0);
-        
+
         setProfile({
           ...fetchedProfile,
-          totalLikes: calculatedTotalLikes
+          totalLikes: calculatedTotalLikes,
         });
-        
-        setVideos(fetchedVideos);
 
-      } catch (err: any) {
-        setError(err.message || "Failed to load data");
+        setVideos(fetchedVideos);
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : "Failed to load data";
+        setError(errorMessage);
         console.error("Error fetching data:", err);
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchData();
+    if (customUserId) {
+      fetchData();
+    }
   }, [customUserId]);
 
   const fetchFollowers = async () => {
@@ -150,9 +165,9 @@ export default function Profile() {
         where("followedCustomUserId", "==", customUserId)
       );
       const followersSnapshot = await getDocs(followersQuery);
-      
-      const followerIds = followersSnapshot.docs.map(doc => doc.data().followerId);
-      
+
+      const followerIds = followersSnapshot.docs.map(doc => doc.data().followerId as string);
+
       const followerProfiles: Follower[] = [];
       for (const followerId of followerIds) {
         const userQuery = query(
@@ -161,17 +176,22 @@ export default function Profile() {
         );
         const userSnapshot = await getDocs(userQuery);
         if (!userSnapshot.empty) {
-          const userData = userSnapshot.docs[0].data();
+          const userData = userSnapshot.docs[0].data() as {
+            username?: string;
+            profilePicture?: string;
+            firstName?: string;
+            lastName?: string;
+          };
           followerProfiles.push({
             id: followerId,
-            username: userData.username || followerId,
-            profilePicture: userData.profilePicture || `https://i.pravatar.cc/150?u=${followerId}`,
-            firstName: userData.firstName || "",
-            lastName: userData.lastName || "",
+            username: userData.username ?? followerId,
+            profilePicture: userData.profilePicture ?? `https://i.pravatar.cc/150?u=${followerId}`,
+            firstName: userData.firstName ?? "",
+            lastName: userData.lastName ?? "",
           });
         }
       }
-      
+
       setFollowers(followerProfiles);
       setShowFollowersModal(true);
     } catch (err) {
@@ -181,11 +201,13 @@ export default function Profile() {
 
   useEffect(() => {
     if (videos.length > 0 && !isLoading) {
+      const cleanupTimeouts: Array<() => void> = [];
+      
       videos.forEach(video => {
         const videoElement = videoRefs.current[video.videoId];
         if (videoElement) {
-          const startTime = video.highlightStart || 2;
-          const duration = video.highlightDuration || 5;
+          const startTime = video.highlightStart ?? 2;
+          const duration = video.highlightDuration ?? 5;
 
           videoElement.currentTime = startTime;
           videoElement.play().catch(e => console.log("Autoplay prevented:", e));
@@ -195,20 +217,26 @@ export default function Profile() {
             videoElement.currentTime = startTime;
           }, duration * 1000);
 
-          return () => clearTimeout(timeout);
+          cleanupTimeouts.push(() => clearTimeout(timeout));
         }
       });
+
+      return () => {
+        cleanupTimeouts.forEach(cleanup => cleanup());
+      };
     }
   }, [videos, isLoading]);
 
   const handleFollow = async () => {
     if (!profile) return;
-    
+
     try {
       const userDocRef = doc(db, "useraccount", profile.id);
+      const currentFollowers = profile.followers ?? 0;
+
       await updateDoc(userDocRef, {
         isFollowing: !profile.isFollowing,
-        followers: profile.isFollowing ? profile.followers - 1 : profile.followers + 1,
+        followers: profile.isFollowing ? currentFollowers - 1 : currentFollowers + 1,
       });
 
       setProfile(prev => {
@@ -216,7 +244,7 @@ export default function Profile() {
         return {
           ...prev,
           isFollowing: !prev.isFollowing,
-          followers: prev.isFollowing ? prev.followers - 1 : prev.followers + 1,
+          followers: prev.isFollowing ? (prev.followers ?? 0) - 1 : (prev.followers ?? 0) + 1,
         };
       });
     } catch (err) {
@@ -228,7 +256,7 @@ export default function Profile() {
     try {
       const videoDocRef = doc(db, "videos", videoId);
       const videoDoc = await getDoc(videoDocRef);
-      
+
       if (!videoDoc.exists()) {
         throw new Error("Video document does not exist");
       }
@@ -239,18 +267,18 @@ export default function Profile() {
       }
 
       const isLiked = !videos[videoIndex].isLiked;
-      
+
       await updateDoc(videoDocRef, {
         likes: isLiked ? videos[videoIndex].likes + 1 : videos[videoIndex].likes - 1,
       });
-      
+
       setVideos(prev =>
         prev.map(video =>
           video.videoId === videoId
             ? {
                 ...video,
                 likes: isLiked ? video.likes + 1 : video.likes - 1,
-                isLiked: isLiked,
+                isLiked,
               }
             : video
         )
@@ -260,9 +288,7 @@ export default function Profile() {
         if (!prev) return null;
         return {
           ...prev,
-          totalLikes: isLiked 
-            ? (prev.totalLikes || 0) + 1 
-            : (prev.totalLikes || 0) - 1
+          totalLikes: isLiked ? (prev.totalLikes ?? 0) + 1 : (prev.totalLikes ?? 0) - 1,
         };
       });
     } catch (err) {
@@ -278,22 +304,22 @@ export default function Profile() {
           videoRefs.current[key]?.pause();
         }
       });
-      
+
       setActiveVideo(videoId);
-      
+
       try {
         const videoDocRef = doc(db, "videos", videoId);
         const videoDoc = await getDoc(videoDocRef);
-        
+
         if (!videoDoc.exists()) {
           throw new Error("Video document does not exist");
         }
 
-        const currentViews = videoDoc.data()?.views || 0;
+        const currentViews = videoDoc.data().views ?? 0;
         await updateDoc(videoDocRef, {
           views: currentViews + 1,
         });
-        
+
         setVideos(prev =>
           prev.map(video =>
             video.videoId === videoId ? { ...video, views: video.views + 1 } : video
@@ -360,19 +386,19 @@ export default function Profile() {
         <div className="flex items-center gap-6">
           <div className="w-20 h-20 md:w-24 md:h-24 rounded-full overflow-hidden border-2 border-pink-500">
             <img
-              src={profile.profilePicture}
-              alt={`${profile.username}'s profile`}
+              src={profile.profilePicture ?? `https://i.pravatar.cc/150?u=${profile.id}`}
+              alt={`${profile.username ?? profile.id}'s profile`}
               className="w-full h-full object-cover"
             />
           </div>
-          
+
           <div className="flex-1">
-            <h1 className="text-xl font-bold">@{profile.username}</h1>
+            <h1 className="text-xl font-bold">@{profile.username ?? profile.id}</h1>
             <p className="text-gray-400 text-sm">
               {profile.firstName} {profile.lastName}
             </p>
             <p className="text-gray-500 text-sm mt-1">{profile.email}</p>
-            
+
             <div className="flex gap-4 mt-2">
               <button
                 onClick={handleFollow}
@@ -387,36 +413,36 @@ export default function Profile() {
             </div>
           </div>
         </div>
-        
+
         <div className="mt-4">
-          <p className="text-gray-300">{profile.bio || "No bio yet"}</p>
+          <p className="text-gray-300">{profile.bio ?? "No bio yet"}</p>
         </div>
-        
+
         <div className="flex justify-between mt-6 pb-4 border-b border-gray-800">
           <div className="text-center">
             <span className="font-bold">{formatNumber(videos.length)}</span>
             <span className="text-gray-400 ml-1">videos</span>
           </div>
           <div className="text-center">
-            <button 
+            <button
               onClick={fetchFollowers}
               className="focus:outline-none hover:text-pink-500 transition-colors"
             >
-              <span className="font-bold">{formatNumber(profile.followers || 0)}</span>
+              <span className="font-bold">{formatNumber(profile.followers ?? 0)}</span>
               <span className="text-gray-400 ml-1">followers</span>
             </button>
           </div>
           <div className="text-center">
-            <span className="font-bold">{formatNumber(profile.following || 0)}</span>
+            <span className="font-bold">{formatNumber(profile.following ?? 0)}</span>
             <span className="text-gray-400 ml-1">following</span>
           </div>
           <div className="text-center">
-            <span className="font-bold">{formatNumber(profile.totalLikes || 0)}</span>
+            <span className="font-bold">{formatNumber(profile.totalLikes ?? 0)}</span>
             <span className="text-gray-400 ml-1">likes</span>
           </div>
         </div>
       </div>
-      
+
       {/* Videos Grid */}
       <div className="pb-20">
         {videos.length > 0 ? (
@@ -437,7 +463,7 @@ export default function Profile() {
                 >
                   <source src={video.videoUrl} type="video/mp4" />
                 </video>
-                
+
                 <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/60 to-transparent">
                   <div className="flex items-center">
                     <svg
@@ -487,7 +513,7 @@ export default function Profile() {
               />
             </svg>
           </button>
-          
+
           <div className="flex-1 relative">
             <video
               ref={el => (videoRefs.current[selectedVideo.videoId] = el)}
@@ -500,23 +526,23 @@ export default function Profile() {
             >
               <source src={selectedVideo.videoUrl} type="video/mp4" />
             </video>
-            
+
             <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent">
               <div className="flex items-center mb-2">
                 <div className="w-10 h-10 rounded-full overflow-hidden mr-3">
                   <img
-                    src={profile.profilePicture}
-                    alt={`${profile.username}'s profile`}
+                    src={profile.profilePicture ?? `https://i.pravatar.cc/150?u=${profile.id}`}
+                    alt={`${profile.username ?? profile.id}'s profile`}
                     className="w-full h-full object-cover"
                   />
                 </div>
                 <div>
-                  <p className="text-white font-medium">@{profile.username}</p>
+                  <p className="text-white font-medium">@{profile.username ?? profile.id}</p>
                 </div>
               </div>
               <p className="text-white text-sm">{selectedVideo.caption}</p>
             </div>
-            
+
             <div className="absolute right-4 bottom-20 flex flex-col items-center gap-5">
               <div className="flex flex-col items-center">
                 <button
@@ -541,7 +567,7 @@ export default function Profile() {
                   {formatNumber(selectedVideo.likes)}
                 </span>
               </div>
-              
+
               <div className="flex flex-col items-center">
                 <button className="flex flex-col items-center">
                   <svg
@@ -560,7 +586,7 @@ export default function Profile() {
                 </button>
                 <span className="text-white text-xs mt-1">Comments</span>
               </div>
-              
+
               <div className="flex flex-col items-center">
                 <button className="flex flex-col items-center">
                   <svg
@@ -609,7 +635,7 @@ export default function Profile() {
                 </svg>
               </button>
             </div>
-            
+
             {followers.length > 0 ? (
               <div className="space-y-4">
                 {followers.map(follower => (
